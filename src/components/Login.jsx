@@ -17,7 +17,10 @@ const Login = ({ onLogin }) => {
     setError('');
 
     try {
-      const response = await api.login(credentials);
+      const response = await api.login({
+        email: credentials.email.trim(),
+        password: credentials.password.trim(),
+      });
       
       if (response.success) {
         // Store the JWT token in localStorage
