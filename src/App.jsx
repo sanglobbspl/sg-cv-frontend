@@ -403,7 +403,7 @@ function App() {
             {/* Logo - Left */}
             <div className="flex items-center">
               <img
-                src={companyLogo || "assets/SGLogo_04.jpg"}
+                src={companyLogo || "/SGLogo_04.jpg"}
                 alt="Company Logo"
                 className="h-12 w-auto max-w-[200px] rounded-lg shadow-md object-contain"
               />

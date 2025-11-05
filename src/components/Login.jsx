@@ -64,7 +64,7 @@ const Login = ({ onLogin }) => {
         <div className="text-center mb-8">
           <div className="flex justify-center mb-2">
             <img
-              src="assets/SGLogo_04.jpg"
+              src="/SGLogo_04.jpg"
               alt="Sanglob Business Services Logo"
               className="h-25 w-auto"
             />
