@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Award, BarChart3, PlusCircle, Edit3, Trash2, Search, ListPlus, XCircle } from 'lucide-react';
+import { Award, BarChart3, PlusCircle, Edit3, Trash2, Search, ListPlus, XCircle, Target } from 'lucide-react';
 import api from '../api';
 
 const emptyEval = {
@@ -32,6 +32,19 @@ export default function PerformanceEvaluation() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyEval });
   const [keyPointInput, setKeyPointInput] = useState('');
+  // Goals modal state
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalAssignedAt, setGoalAssignedAt] = useState(() => {
+    const d = new Date();
+    const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return tz.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+  });
+  const [goalDueAt, setGoalDueAt] = useState('');
+  const [goalKpi, setGoalKpi] = useState('');
+  const [goalKeyPoints, setGoalKeyPoints] = useState([]);
+  const [goalKeyPointInput, setGoalKeyPointInput] = useState('');
+  const [goalSelectedIds, setGoalSelectedIds] = useState([]);
+  const [goalSearch, setGoalSearch] = useState('');
   // Current user role for workflow actions
   const [userRole, setUserRole] = useState('');
   // Period helper state
@@ -117,6 +130,79 @@ export default function PerformanceEvaluation() {
     setIsEditing(false);
     setEditingId(null);
     setShowForm(true);
+  }
+
+  function onAddGoalClick() {
+    // Preselect chosen employee if any
+    const pre = selectedEmployee ? [selectedEmployee] : [];
+    setGoalSelectedIds(pre);
+    // Reset form fields but keep assignedAt default and clear others
+    setGoalDueAt('');
+    setGoalKpi('');
+    setGoalKeyPoints([]);
+    setGoalKeyPointInput('');
+    setShowGoalModal(true);
+  }
+
+  function toggleGoalSelection(id) {
+    setGoalSelectedIds(prev => (
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    ));
+  }
+
+  function addGoalKeyPoint() {
+    const val = (goalKeyPointInput || '').trim();
+    if (!val) return;
+    setGoalKeyPoints(prev => [...prev, val]);
+    setGoalKeyPointInput('');
+  }
+
+  function removeGoalKeyPoint(idx) {
+    setGoalKeyPoints(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function persistGoals(assignments) {
+    try {
+      const key = 'employee_goals_assignments';
+      const existingRaw = localStorage.getItem(key);
+      const existing = existingRaw ? JSON.parse(existingRaw) : [];
+      const merged = Array.isArray(existing) ? [...existing, ...assignments] : assignments;
+      localStorage.setItem(key, JSON.stringify(merged));
+    } catch (_) {
+      // ignore localStorage errors
+    }
+  }
+
+  function onSubmitGoals() {
+    setError(null);
+    setMessage(null);
+    if (goalSelectedIds.length === 0) {
+      setError('Select at least one employee to assign goals');
+      return;
+    }
+    if (!goalAssignedAt) {
+      setError('Assignment time is required');
+      return;
+    }
+    if (!goalDueAt) {
+      setError('Last date (due) is required');
+      return;
+    }
+    const assignmentId = `${Date.now()}`;
+    const payloadBase = {
+      id: assignmentId,
+      assigned_at: goalAssignedAt,
+      due_at: goalDueAt,
+      kpi: goalKpi,
+      key_points: goalKeyPoints,
+    };
+    const assignments = goalSelectedIds.map(empId => ({
+      ...payloadBase,
+      employee_id: empId,
+    }));
+    persistGoals(assignments);
+    setShowGoalModal(false);
+    setMessage(`Goal assigned to ${goalSelectedIds.length} ${goalSelectedIds.length === 1 ? 'employee' : 'employees'}`);
   }
 
   function updateField(key, value) {
@@ -259,6 +345,13 @@ export default function PerformanceEvaluation() {
               />
             </div>
             <button
+              onClick={onAddGoalClick}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded border text-gray-800 bg-white hover:bg-gray-50"
+              title="Add Goal"
+            >
+              <Target className="w-4 h-4" /> Add Goal
+            </button>
+            <button
               onClick={onAddNew}
               className="inline-flex items-center gap-2 px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
             >
@@ -267,6 +360,81 @@ export default function PerformanceEvaluation() {
           </div>
         )}
       </div>
+      {showGoalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white w-full max-w-3xl rounded-lg shadow-lg">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="flex items-center gap-2 text-gray-800 font-medium">
+                <Target className="w-5 h-5 text-indigo-600" /> Assign Goal
+              </div>
+              <button className="px-2 py-1 rounded border text-gray-700 hover:bg-gray-50" onClick={() => setShowGoalModal(false)}>Close</button>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-1">
+                <label className="block text-sm text-gray-600 mb-2">Select employees</label>
+                <div className="flex items-center bg-white border rounded px-2 py-1 mb-2">
+                  <Search className="w-4 h-4 text-gray-500" />
+                  <input className="ml-2 outline-none w-full" placeholder="Search…" value={goalSearch} onChange={(e) => setGoalSearch(e.target.value)} />
+                </div>
+                <div className="max-h-64 overflow-y-auto divide-y border rounded">
+                  {employees.filter(e => {
+                    const q = goalSearch.toLowerCase();
+                    return (e.name || '').toLowerCase().includes(q) || (e.email || '').toLowerCase().includes(q);
+                  }).map(e => (
+                    <label key={e.employee_id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${goalSelectedIds.includes(e.employee_id) ? 'bg-indigo-50' : ''}`}>
+                      <input type="checkbox" checked={goalSelectedIds.includes(e.employee_id)} onChange={() => toggleGoalSelection(e.employee_id)} />
+                      <span className="flex-1">
+                        <span className="block text-sm font-medium">{e.name}</span>
+                        <span className="block text-xs text-gray-500">{e.email}</span>
+                      </span>
+                    </label>
+                  ))}
+                  {employees.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-500">No employees available</div>
+                  )}
+                </div>
+              </div>
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Assignment time</label>
+                  <input type="datetime-local" className="w-full border rounded px-3 py-2" value={goalAssignedAt} onChange={(e) => setGoalAssignedAt(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Last date (due)</label>
+                  <input type="datetime-local" className="w-full border rounded px-3 py-2" value={goalDueAt} onChange={(e) => setGoalDueAt(e.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-gray-600 mb-1">KPI</label>
+                  <input type="text" className="w-full border rounded px-3 py-2" placeholder="e.g., Close 10 qualified leads per month" value={goalKpi} onChange={(e) => setGoalKpi(e.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">Key Points <ListPlus className="w-4 h-4 text-gray-500" /></label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input className="flex-1 border rounded px-3 py-2" placeholder="Add clear steps or milestones" value={goalKeyPointInput} onChange={(e) => setGoalKeyPointInput(e.target.value)} />
+                    <button type="button" className="px-3 py-2 rounded bg-gray-800 text-white hover:bg-gray-900" onClick={addGoalKeyPoint}>Add</button>
+                  </div>
+                  {goalKeyPoints.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {goalKeyPoints.map((kp, idx) => (
+                        <span key={`${kp}-${idx}`} className="inline-flex items-center gap-2 px-2 py-1 rounded bg-indigo-50 text-indigo-700 border">
+                          {kp}
+                          <button type="button" className="text-indigo-700 hover:text-indigo-900" onClick={() => removeGoalKeyPoint(idx)}>
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t flex items-center justify-end gap-2">
+              <button className="px-3 py-2 rounded border text-gray-700 hover:bg-gray-50" onClick={() => setShowGoalModal(false)}>Cancel</button>
+              <button className="px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700" onClick={onSubmitGoals}>Assign Goal</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 px-4 py-3 rounded bg-red-50 text-red-700">{error}</div>
