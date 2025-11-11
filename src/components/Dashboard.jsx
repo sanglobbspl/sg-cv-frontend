@@ -297,6 +297,8 @@ const Dashboard = ({ onNavigateToList }) => {
   const [performanceData, setPerformanceData] = useState(null);
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError, setPerfError] = useState(null);
+  const [goalsAssignments, setGoalsAssignments] = useState([]);
+  const [goalsSummary, setGoalsSummary] = useState({ total: 0, byStatus: {}, byPriority: {} });
 
   useEffect(() => {
     if (activeTab !== 'performance') return;
@@ -310,6 +312,31 @@ const Dashboard = ({ onNavigateToList }) => {
         setPerfError(err?.message || 'Failed to load performance analytics');
       })
       .finally(() => setPerfLoading(false));
+  }, [activeTab]);
+
+  // Load goals assignments for performance analytics tab
+  useEffect(() => {
+    if (activeTab !== 'performance') return;
+    try {
+      const raw = localStorage.getItem('employee_goals_assignments');
+      const list = raw ? JSON.parse(raw) : [];
+      const arr = Array.isArray(list) ? list : [];
+      setGoalsAssignments(arr);
+      const byStatus = arr.reduce((acc, g) => {
+        const s = (g.status || 'assigned').toLowerCase();
+        acc[s] = (acc[s] || 0) + 1;
+        return acc;
+      }, {});
+      const byPriority = arr.reduce((acc, g) => {
+        const p = (g.priority || 'medium').toLowerCase();
+        acc[p] = (acc[p] || 0) + 1;
+        return acc;
+      }, {});
+      setGoalsSummary({ total: arr.length, byStatus, byPriority });
+    } catch (_) {
+      setGoalsAssignments([]);
+      setGoalsSummary({ total: 0, byStatus: {}, byPriority: {} });
+    }
   }, [activeTab]);
 
   // Handle metric card clicks to filter candidates in dashboard
@@ -1353,7 +1380,7 @@ const Dashboard = ({ onNavigateToList }) => {
           {!perfLoading && !perfError && performanceData && (
             <div className="space-y-4">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <StatCard
                   title="Avg KPI Score"
                   value={performanceData.average_kpi_score ?? performanceData.avg_kpi ?? 0}
@@ -1378,6 +1405,90 @@ const Dashboard = ({ onNavigateToList }) => {
                   icon={Users}
                   color="green"
                 />
+                <StatCard
+                  title="Goals Assigned"
+                  value={goalsSummary.total}
+                  icon={BarChart3}
+                  color="orange"
+                />
+              </div>
+
+              {/* Goals Bar */}
+              <div className="bg-white rounded-lg shadow border p-4">
+                <div className="flex items-center mb-3">
+                  <BarChart3 className="w-5 h-5 text-orange-600 mr-2" />
+                  <h3 className="text-lg font-semibold text-gray-900">Goals Bar</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="p-3 rounded border bg-orange-50">
+                    <div className="text-sm text-gray-600">By Status</div>
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {Object.entries(goalsSummary.byStatus).map(([s, n]) => (
+                        <span key={s} className="px-2 py-1 rounded border bg-white text-gray-800 text-xs">{s}: {n}</span>
+                      ))}
+                      {Object.keys(goalsSummary.byStatus).length === 0 && (
+                        <span className="text-xs text-gray-500">No data</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded border bg-yellow-50">
+                    <div className="text-sm text-gray-600">By Priority</div>
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {Object.entries(goalsSummary.byPriority).map(([p, n]) => (
+                        <span key={p} className="px-2 py-1 rounded border bg-white text-gray-800 text-xs">{p}: {n}</span>
+                      ))}
+                      {Object.keys(goalsSummary.byPriority).length === 0 && (
+                        <span className="text-xs text-gray-500">No data</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded border bg-indigo-50">
+                    <div className="text-sm text-gray-600">Total Goals</div>
+                    <div className="mt-2 text-2xl font-semibold text-indigo-700">{goalsSummary.total}</div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">KPI</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weightage</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignee</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {goalsAssignments.length === 0 ? (
+                        <tr>
+                          <td className="px-4 py-3 text-center text-gray-500" colSpan="7">No goals assigned</td>
+                        </tr>
+                      ) : (
+                        goalsAssignments.map((g) => (
+                          <tr key={`${g.id}-${g.employee_id}`} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-700">{g.kpi || '-'}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-1 rounded border text-xs ${
+                                g.priority === 'high' ? 'bg-red-50 text-red-700 border-red-200' :
+                                g.priority === 'medium' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                'bg-green-50 text-green-700 border-green-200'
+                              }`}>{(g.priority || '').toUpperCase() || '-'}</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{g.weightage || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{g.assignee_name || '-'}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className="px-2 py-1 rounded bg-indigo-50 text-indigo-700 border">{g.status || 'assigned'}</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{g.assigned_at ? new Date(g.assigned_at).toLocaleString() : '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{g.due_at ? new Date(g.due_at).toLocaleString() : '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Details */}

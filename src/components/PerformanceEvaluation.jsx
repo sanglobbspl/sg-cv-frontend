@@ -41,10 +41,13 @@ export default function PerformanceEvaluation() {
   });
   const [goalDueAt, setGoalDueAt] = useState('');
   const [goalKpi, setGoalKpi] = useState('');
+  const [goalWeightage, setGoalWeightage] = useState('');
+  const [goalPriority, setGoalPriority] = useState('medium');
   const [goalKeyPoints, setGoalKeyPoints] = useState([]);
   const [goalKeyPointInput, setGoalKeyPointInput] = useState('');
   const [goalSelectedIds, setGoalSelectedIds] = useState([]);
   const [goalSearch, setGoalSearch] = useState('');
+  const [assignedGoals, setAssignedGoals] = useState([]);
   // Current user role for workflow actions
   const [userRole, setUserRole] = useState('');
   // Period helper state
@@ -109,8 +112,14 @@ export default function PerformanceEvaluation() {
   useEffect(() => {
     if (userRole && userRole !== 'hr' && userRole !== 'admin') {
       loadHistory(selectedEmployee || undefined);
+      loadAssignedGoals(selectedEmployee || undefined);
     }
   }, [userRole]);
+
+  useEffect(() => {
+    // keep assigned goals view in sync when user changes selected employee
+    loadAssignedGoals(selectedEmployee || undefined);
+  }, [selectedEmployee]);
 
   function selectEmployee(empId) {
     setSelectedEmployee(empId);
@@ -119,6 +128,7 @@ export default function PerformanceEvaluation() {
     setEditingId(null);
     setForm({ ...emptyEval, employee_id: empId });
     loadHistory(empId);
+    loadAssignedGoals(empId);
   }
 
   function onAddNew() {
@@ -173,6 +183,22 @@ export default function PerformanceEvaluation() {
     }
   }
 
+  function loadAssignedGoals(empId) {
+    try {
+      const key = 'employee_goals_assignments';
+      const raw = localStorage.getItem(key);
+      const list = raw ? JSON.parse(raw) : [];
+      const filtered = Array.isArray(list)
+        ? (empId ? list.filter(g => String(g.employee_id) === String(empId)) : list)
+        : [];
+      // sort by assigned_at desc
+      filtered.sort((a, b) => String(b.assigned_at || '').localeCompare(String(a.assigned_at || '')));
+      setAssignedGoals(filtered);
+    } catch (_) {
+      setAssignedGoals([]);
+    }
+  }
+
   function onSubmitGoals() {
     setError(null);
     setMessage(null);
@@ -188,21 +214,35 @@ export default function PerformanceEvaluation() {
       setError('Last date (due) is required');
       return;
     }
+    if (!goalPriority) {
+      setError('Priority is required');
+      return;
+    }
     const assignmentId = `${Date.now()}`;
     const payloadBase = {
       id: assignmentId,
       assigned_at: goalAssignedAt,
       due_at: goalDueAt,
       kpi: goalKpi,
+      weightage: goalWeightage,
+      priority: goalPriority,
+      status: 'assigned',
       key_points: goalKeyPoints,
     };
-    const assignments = goalSelectedIds.map(empId => ({
-      ...payloadBase,
-      employee_id: empId,
-    }));
+    const assignments = goalSelectedIds.map(empId => {
+      const emp = employees.find(e => String(e.employee_id) === String(empId)) || {};
+      return {
+        ...payloadBase,
+        employee_id: empId,
+        assignee_name: emp.name || '',
+        assignee_email: emp.email || '',
+      };
+    });
     persistGoals(assignments);
     setShowGoalModal(false);
     setMessage(`Goal assigned to ${goalSelectedIds.length} ${goalSelectedIds.length === 1 ? 'employee' : 'employees'}`);
+    // refresh assigned goals section
+    loadAssignedGoals(selectedEmployee || undefined);
   }
 
   function updateField(key, value) {
@@ -406,6 +446,18 @@ export default function PerformanceEvaluation() {
                 <div className="md:col-span-2">
                   <label className="block text-sm text-gray-600 mb-1">KPI</label>
                   <input type="text" className="w-full border rounded px-3 py-2" placeholder="e.g., Close 10 qualified leads per month" value={goalKpi} onChange={(e) => setGoalKpi(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Weightage</label>
+                  <input type="number" className="w-full border rounded px-3 py-2" placeholder="e.g., 20" value={goalWeightage} onChange={(e) => setGoalWeightage(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Priority</label>
+                  <select className="w-full border rounded px-3 py-2" value={goalPriority} onChange={(e) => setGoalPriority(e.target.value)}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm text-gray-600 mb-1 flex items-center gap-2">Key Points <ListPlus className="w-4 h-4 text-gray-500" /></label>
@@ -872,6 +924,67 @@ export default function PerformanceEvaluation() {
                               </>
                             )}
                           </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Assigned Goals Section */}
+          <div className="bg-white border rounded-lg overflow-hidden mt-4">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-medium">Assigned Goals</div>
+              <div className="text-sm text-gray-500">
+                {selectedEmployee ? `Employee: ${selectedEmployee}` : 'All assigned goals'}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">KPI</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weightage</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignee</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned At</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Key Points</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {assignedGoals.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-3 text-center text-gray-500" colSpan="8">No goals assigned</td>
+                    </tr>
+                  ) : (
+                    assignedGoals.map((g) => (
+                      <tr key={`${g.id}-${g.employee_id}`} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-700">{g.kpi || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{g.weightage || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-1 rounded border text-xs ${
+                            g.priority === 'high' ? 'bg-red-50 text-red-700 border-red-200' :
+                            g.priority === 'medium' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                            'bg-green-50 text-green-700 border-green-200'
+                          }`}>{(g.priority || '').toUpperCase() || '-'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          <div className="flex flex-col">
+                            <span>{g.assignee_name || '-'}</span>
+                            <span className="text-xs text-gray-500">{g.assignee_email || ''}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className="px-2 py-1 rounded bg-indigo-50 text-indigo-700 border">{g.status || 'assigned'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{g.assigned_at ? new Date(g.assigned_at).toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{g.due_at ? new Date(g.due_at).toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {Array.isArray(g.key_points) && g.key_points.length > 0 ? g.key_points.slice(0,3).join(' • ') : '-'}
                         </td>
                       </tr>
                     ))
