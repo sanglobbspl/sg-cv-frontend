@@ -535,16 +535,18 @@ const CandidatesList = ({ user, dashboardFilter }) => {
                 </p>
               </div>
               <div 
-                className="overflow-x-auto scrollbar-thin scrollbar-thumb-blue-400 scrollbar-track-gray-100 hover:scrollbar-thumb-blue-500 scrollbar-thumb-rounded-full scrollbar-track-rounded-full" 
+                className="overflow-x-auto overflow-y-auto max-h-[70vh] scrollbar-thin scrollbar-thumb-blue-400 scrollbar-track-gray-100 hover:scrollbar-thumb-blue-500 scrollbar-thumb-rounded-full scrollbar-track-rounded-full" 
                 style={{ 
                   scrollbarWidth: 'thin', 
                   scrollbarColor: '#60a5fa #f3f4f6',
                   scrollbarGutter: 'stable',
-                  paddingBottom: '8px'
+                  paddingBottom: '8px',
+                  maxHeight: '70vh',
+                  position: 'relative'
                 }}
               >
                 <table className="w-full table-auto candidates-table" style={{ minWidth: '1200px' }}>
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                     <th className="col-status px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       <div className="flex items-center space-x-2">
